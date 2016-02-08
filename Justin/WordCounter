@@ -1,0 +1,157 @@
+package spark.test;
+
+ import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
+
+import scala.Tuple2;
+
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.regex.Pattern;
+
+public final class WordCounter {
+	
+  //this was part of the example, find and cite
+  private static final Pattern SPACE = Pattern.compile(" ");
+
+  public static void main(String[] args) throws Exception {
+
+	  
+	  //these program was generated from a combination of:
+	  //http://spark.apache.org/docs/latest/quick-start.html
+	  //http://spark.apache.org/examples.html
+	  
+	  
+	  
+	  //starts spark
+	 
+	  //note I had to add setMaster("local") to this
+	  SparkConf sparkConf = new SparkConf().setMaster("local").setAppName("JavaWordCount");
+	  JavaSparkContext sc = new JavaSparkContext(sparkConf);
+	  JavaRDD<String> lines = sc.textFile("C:/Users/Justin Baraboo/Desktop/Tweets.txt");
+	  
+	  //start of map
+	  JavaRDD<String> words = lines.flatMap(
+	    new FlatMapFunction<String, String>() {
+	      public Iterable<String> call(String s) {
+	        return Arrays.asList(s.split(" "));
+	      }
+	    }
+	  );
+	  
+	  
+	  //these lines I did
+	  /*
+	  JavaRDD<String> bigWords = words.filter(new Function<String,Boolean>() {
+
+		public Boolean call(String v1) throws Exception {
+			return v1.length()>3 && v1.startsWith("cat");
+		} } );
+	  
+	  
+	  JavaRDD<String> dogWords = words.filter(new Function<String,Boolean>() {
+
+			public Boolean call(String v1) throws Exception {
+				return v1.length()>3 && v1.startsWith("dog");
+			} } );
+	  
+	  */
+	  
+	  //below taken from http://spark.apache.org/examples.html
+	  //mapping
+	  JavaPairRDD<String, Integer> pairs = words.mapToPair(
+			  new PairFunction<String, String, Integer>() {
+			    public Tuple2<String, Integer> call(String s) {
+			      return new Tuple2(s, 1);
+			    }
+			  }
+			);	
+	  
+	  //reduce
+	  JavaPairRDD<String,Integer> wordMap = pairs.reduceByKey(new Function2<Integer, Integer, Integer>() {
+
+		public Integer call(Integer v1, Integer v2) throws Exception {
+			return v1+v2;
+		}} );
+	  
+	  
+	  
+	  
+	  //trying to sort is hard
+	  //using this guys approach:
+	  //http://codereview.stackexchange.com/questions/56641/producing-a-sorted-wordcount-with-spark
+
+/*
+	  JavaPairRDD<Tuple2<Integer, String>, Integer> countInKey = words.mapToPair(new PairFunction<String, Tuple2<Integer, String>, Integer>() {
+		public Tuple2<Tuple2<Integer, String>, Integer> call(String a) throws Exception {
+			return new Tuple2(new Tuple2<Integer, String>(a._2, a._1), null);
+		}
+	}); // setting value to null, since it won't be used anymore*/
+
+	 // List<Tuple2<Tuple2<Integer, String>, Integer>> wordSortedByCount = countInKey.sortByKey(new TupleComparator(), false).collect();
+
+	  
+	  
+	 // List<Tuple2<String,Integer>> wordCount =  wordMap.sortByKey(new TupleComparator() )collect();
+	  
+	  //getting the data back
+	  List<Tuple2<String,Integer>> wordCount =  wordMap.collect();
+	  
+	  
+	  
+//	  List<String> collector = bigWords.collect();
+//	  List<String> dogCollector = dogWords.collect();
+	 
+	  
+	  sc.close();	  
+	  
+	  //write output
+	  
+	  /*
+	  for(String word : collector) {
+		  System.out.println(word);
+	  }
+	  
+	  for(String word : dogCollector) {
+		  System.out.println(word);
+	  }*/
+	  
+	  PrintWriter out = new PrintWriter("wordCount.txt");
+	  for(Tuple2<String,Integer> tuple : wordCount){
+		  //System.out.println( tuple._1() + ": " + tuple._2() );
+		  out.println( tuple._1() + ": " + tuple._2() );
+		  
+	  }
+	  out.close();
+	  
+    }
+ }
