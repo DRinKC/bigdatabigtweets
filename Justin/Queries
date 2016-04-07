@@ -38,11 +38,21 @@ import com.googlecode.charts4j.Plot;
 import com.googlecode.charts4j.Plots;
 import com.googlecode.charts4j.Shape;
 import com.googlecode.charts4j.Slice;
+import com.kennycason.kumo.CollisionMode;
+import com.kennycason.kumo.PolarBlendMode;
+import com.kennycason.kumo.PolarWordCloud;
+import com.kennycason.kumo.WordCloud;
+import com.kennycason.kumo.bg.CircleBackground;
+import com.kennycason.kumo.font.scale.SqrtFontScalar;
+import com.kennycason.kumo.palette.ColorPalette;
+import com.kennycason.kumo.WordFrequency;
+
 
 import static com.googlecode.charts4j.Color.*;
 
 import scala.Tuple2;
 
+import java.awt.*;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.net.URLConnection;
@@ -52,8 +62,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class QueriesMain {
 
@@ -70,6 +78,8 @@ public class QueriesMain {
 		  //to get pie charts, I used:
 		  //https://github.com/julienchastang/charts4j/blob/master/src/test/java/com/googlecode/charts4j/example/PieChartExample.java
 		  
+		  //to create the wordplots, I used:
+		  //https://github.com/kennycason/kumo
 		
 		//starts spark
 		SparkConf sparkConf = new SparkConf().setMaster("local").setAppName("Queries");
@@ -90,6 +100,9 @@ public class QueriesMain {
 		
 		
 		//get rid of corrupted Tweets
+		//these could easily be resaved as a JSON an then used instead of the original JSON
+		//but I like them as an example of reducing the data and then performing
+		//your queries on that sub-data
 		 DataFrame goodTweets = sqlContext.sql("SELECT * FROM ElectionTweets WHERE _corrupt_record IS NULL");
 		 goodTweets.registerTempTable("GoodElectionTweets");
 
@@ -97,16 +110,14 @@ public class QueriesMain {
 		 goodNightTweets.registerTempTable("GoodNightTweets");
 		// System.out.println(goodNightTweets.count());
 		 
-		//query 1
+		//query 1 done
 		//the sql query
-		 /*
 		 {
 		 DataFrame loclang = sqlContext.sql("SELECT user.location, user.lang, COUNT(text)cnt FROM "
 		  		+ "SportTweets WHERE user.location IS NOT NULL GROUP BY user.location, user.lang ORDER BY cnt desc limit 10"
 				  );
 		//loclang.show();
 		  
-		
 		//getting the info from the dataframe for graphing
 		List<String> outputLoc = loclang.javaRDD().map(
 		    row -> row.getString(0)
@@ -161,11 +172,10 @@ public class QueriesMain {
 	    String url = chart.toURLString();
 	    System.out.println(url);
 	}
-	*/
 		
 		//query 2
-		/*need to redo via above draw. Also rescale y
-	 {
+        //need to just pretty up
+   {
 	    DataFrame tweetsperhour = sqlContext.sql(" SELECT a.date, count(text) as cnt FROM"+
 	              " ( SELECT text, SUBSTRING(created_at,0,13) AS date"+
 	                      " FROM SportTweets where text!= '')a"+
@@ -177,47 +187,60 @@ public class QueriesMain {
 		    row -> row.getString(0)
 		    ).collect();
 		  
-		List<Integer> outputCounts = tweetsperhour.javaRDD().map(
+		ArrayList<Integer> outputCounts = new ArrayList<Integer>(tweetsperhour.javaRDD().map(
 		    row ->  new Long(row.getLong(1)).intValue()
-		    ).collect();
-		  
-//		for(int i = 0; i < outputDate.size(); i++){
+		    ).collect());
+		int max = 0;  
+		for(int i = 0; i < outputDate.size(); i++){
+			if(max < outputCounts.get(i)){
+				max = outputCounts.get(i);
+			}
 //			System.out.println("date: " + outputDate.get(i) + " , count: " + outputCounts.get(i));  
-//		}
-		  
-		  
-		  //copy from above template
-		Data tweetHourData = Data.newData(outputCounts);//
-		Plot plots2 = Plots.newPlot(tweetHourData);
-		plots2.addShapeMarkers(Shape.DIAMOND, BLUE, 10);
-		plots2.setColor(AQUA);
-		BarChart barChart2 = GCharts.newBarChart(plots2);
-		barChart2.setSize(1000, 300);
-		AxisLabels nameLabels = AxisLabelsFactory.newAxisLabels(outputDate);
-		AxisLabels xLabel = AxisLabelsFactory.newAxisLabels("Dates", 50.0);
-		AxisLabels yNumeric = AxisLabelsFactory.newNumericRangeAxisLabels(0, 100.0);
-		AxisLabels yLabel = AxisLabelsFactory.newAxisLabels("Count",50.0);
-		String title = "Title";
-		barChart2.addXAxisLabels(nameLabels);
-		barChart2.addXAxisLabels(xLabel);
-		barChart2.addYAxisLabels(yNumeric);
-		barChart2.addYAxisLabels(yLabel);
-		barChart2.setTitle(title);
-		barChart2.setBarWidth(75);
-		String barChartURL = barChart2.toURLString();
-		System.out.println(barChartURL);
+		}
+		for(int i = 0; i < outputDate.size(); i++){
+			outputCounts.add((outputCounts.get(0)*100)/max);
+			outputCounts.remove(0);
+		}	
+	 
+		Data locData = Data.newData(outputCounts);//
+		Plot plots = Plots.newPlot(locData);
+		plots.addShapeMarkers(Shape.DIAMOND, BLUE, 10);
+		plots.setColor(AQUA);   
+		BarChartPlot barChart = Plots.newBarChartPlot(locData, BLUEVIOLET, "Tweets");
+	    BarChart chart = GCharts.newBarChart(barChart);
+	    AxisStyle axisStyle = AxisStyle.newAxisStyle(BLACK, 13, AxisTextAlignment.CENTER);
+	    AxisLabels score = AxisLabelsFactory.newAxisLabels("count", 50.0);
+	    score.setAxisStyle(axisStyle);
+	    AxisLabels year = AxisLabelsFactory.newAxisLabels("Date", 50.0);
+	    year.setAxisStyle(axisStyle);
+
+	    // Adding axis info to chart.
+	    chart.addXAxisLabels(AxisLabelsFactory.newAxisLabels(outputDate));
+	    chart.addYAxisLabels(AxisLabelsFactory.newNumericRangeAxisLabels(0, max, max/10));
+	    chart.addYAxisLabels(score);
+	    chart.addXAxisLabels(year);
+
+	    chart.setSize(1000, 250);
+	    chart.setBarWidth(500/(outputCounts.size()));
+	    chart.setSpaceWithinGroupsOfBars(20);
+	    chart.setDataStacked(false);
+	    chart.setTitle("Tweets per Hour", BLACK, 16);
+	    chart.setGrid(100, 10, 3, 2);
+	    String url = chart.toURLString();
+	    System.out.println(url);
 	}
+	 
 	    
 		//query 3
-	    /*this one is fine
+	    //this one is fine
 	    {
 	    DataFrame bern = sqlContext.sql("SELECT * FROM GoodElectionTweets WHERE UPPER(text) LIKE UPPER('%bern%')");
 		//bern.show();
-		System.out.println("Bernie " + bern.count());
+//		System.out.println("Bernie " + bern.count());
 		  
 		DataFrame hillary = sqlContext.sql("SELECT * FROM GoodElectionTweets WHERE UPPER(text) LIKE UPPER('%hillary%')");
 		//hillary.show();
-		System.out.println("Hillary " + hillary.count());
+//		System.out.println("Hillary " + hillary.count());
 		  
 		double bernieCount = bern.count();
 		double hillaryCount = hillary.count();
@@ -244,10 +267,10 @@ public class QueriesMain {
 		String barChartURL = barChart.toURLString();
 		System.out.println(barChartURL);
 	}
-	*/
+	
 		
-	//query 4
-	/*Needs either 2 bar charts for pie chart or rescaling
+	//query 4 done
+	
 	{
 		  //
 		DataFrame famous = sqlContext.sql("SELECT a.rs, a.loc, count(a.text) AS total_tweets, sum(a.retweets) AS total_retweets "+
@@ -268,74 +291,36 @@ public class QueriesMain {
 		List<String> outputHan = famous.javaRDD().map(
 		    row -> row.getString(0)
 		    ).collect();
-		 //outputLocation
-		List<String> outputLoca = famous.javaRDD().map(
-		    row -> row.getString(1)
-		    ).collect();
-		//outputTweets
-		List<Integer> outputTw = famous.javaRDD().map(
-		    row ->  new Long(row.getLong(2)).intValue()
-		    ).collect();
-		  
-		//outputReTweets
-		List<Integer> outputRt = famous.javaRDD().map(
-		    row ->  new Long(row.getLong(3)).intValue()
-		    ).collect();
-		  
-		List<Double> outputTw2 = new ArrayList<>(Arrays.asList());;
-		List<Double> outputRt2 = new ArrayList<>(Arrays.asList());;
-
-		double tWtotal = 0.0;
-		double rTtotal = 0.0;
-		for(int i = 0; i < outputTw.size(); i++){
-		  if(outputTw.get(i) > tWtotal){
-		  	tWtotal = outputTw.get(i);
-		   }
-		  if(outputRt.get(i) > rTtotal){
-			rTtotal = outputRt.get(i);
-		 }
+		
+		List<Integer> outputInOut = new ArrayList<Integer>(famous.javaRDD().map(
+			    row ->  new Long(row.getLong(3)/row.getLong(2)).intValue()
+			    ).collect());
+		
+		int total = 0;
+		for(int i = 0; i < outputInOut.size(); i++){
+			total += outputInOut.get(i);
 		}
-		  
-		if(tWtotal > rTtotal){
-			  rTtotal = tWtotal;
+		for(int i = 0; i < outputInOut.size(); i++){
+			outputInOut.add(outputInOut.get(0)*100/total);
+			outputInOut.remove(0);
 		}
-		  
-		for(int i = 0; i < outputTw.size(); i++){
-		  outputTw2.add(outputRt.get(i)/outputTw.get(i) *100.0);
-		  outputRt2.add(outputRt.get(i)/rTtotal *100);
+		
+		ArrayList<Slice> slices = new ArrayList<Slice>();
+		for(int i = 0; i < outputHan.size(); i++){
+			slices.add(Slice.newSlice(    outputInOut.get(i), outputHan.get(i)));
 		}
-		  
-		  
-		Data tData = Data.newData(outputTw2);//
-		Data rData = Data.newData(outputRt2);
-		BarChartPlot barChart  = Plots.newBarChartPlot(tData, BLUEVIOLET, "Tweets");
-		BarChartPlot barChart2 = Plots.newBarChartPlot(rData, RED, "Retweets");
-	    BarChart chart = GCharts.newBarChart(barChart, barChart2);
-	    AxisStyle axisStyle = AxisStyle.newAxisStyle(BLACK, 13, AxisTextAlignment.CENTER);
-	    AxisLabels score = AxisLabelsFactory.newAxisLabels("%count", 50.0);
-	    score.setAxisStyle(axisStyle);
-	    AxisLabels year = AxisLabelsFactory.newAxisLabels("user", 50.0);
-	    year.setAxisStyle(axisStyle);
-
-        // Adding axis info to chart.
-	    chart.addXAxisLabels(AxisLabelsFactory.newAxisLabels(outputHan));
-	    chart.addYAxisLabels(AxisLabelsFactory.newNumericRangeAxisLabels(0, 100));
-	    chart.addYAxisLabels(score);
-	    chart.addXAxisLabels(year);
-
-	    chart.setSize(800, 250);
-	    chart.setBarWidth(10);
-	    chart.setSpaceWithinGroupsOfBars(0);
-	    chart.setDataStacked(false);
-	    chart.setTitle("Title", BLACK, 16);
-	    chart.setGrid(100, 10, 3, 2);
+		
+	    PieChart chart = GCharts.newPieChart(slices);
+	    chart.setTitle("Who tweets get retweeted the most per tweet sent?", BLACK, 16);
+	    chart.setSize(500, 200);
+	    chart.setThreeD(false);
 	    String url = chart.toURLString();
-	    System.out.println(url);  
+	    System.out.println(url);
 	}
-	*/
 	
-	//query5
-	/*all good	 
+	
+	//query5 done
+		 
    {
 	   
 	      JavaPairRDD<String,Integer> hours = sqlContext.sql("SELECT SUBSTRING(createdAt, 12,2) as hour FROM GoodNightTweets").distinct()
@@ -425,9 +410,9 @@ public class QueriesMain {
        	  BarChartPlot barChart3 = Plots.newBarChartPlot(pData, YELLOW, "Pizza");
 		  BarChart chart2 = GCharts.newBarChart(barChart, barChart2, barChart3);
 		  AxisStyle axisStyle = AxisStyle.newAxisStyle(BLACK, 13, AxisTextAlignment.CENTER);
-		  AxisLabels score = AxisLabelsFactory.newAxisLabels("count", 50.0);
+		  AxisLabels score = AxisLabelsFactory.newAxisLabels("Count of Tweets", 50.0);
 		  score.setAxisStyle(axisStyle);
-		  AxisLabels year = AxisLabelsFactory.newAxisLabels("Time", 50.0);
+		  AxisLabels year = AxisLabelsFactory.newAxisLabels("Hour", 50.0);
 		  year.setAxisStyle(axisStyle);
 
 	      // Adding axis info to chart.
@@ -440,16 +425,16 @@ public class QueriesMain {
 		  chart2.setBarWidth(10);
 		  chart2.setSpaceWithinGroupsOfBars(0);
 		  chart2.setDataStacked(false);
-		  chart2.setTitle("Title", BLACK, 16);
+		  chart2.setTitle("Late Night Food Cravings", BLACK, 16);
 		  chart2.setGrid(100, 10, 3, 2);
 		  String url2 = chart2.toURLString();
 		  System.out.println(url2);   	      
    }
-	*/
+	
    
    //query6
-   /*
-   {
+   
+   { 
 	   DataFrame lenTweet = sqlContext.sql("SELECT text, createdAt FROM GoodNightTweets");
 	   //lenTweet.show();
 		 
@@ -458,26 +443,52 @@ public class QueriesMain {
 			 row -> new Tuple2<String, Integer>( row.getString(1).substring(11, 13), row.getString(0).length())
 		);
 	   
-	   System.out.println( thing.countByKey().toString() );
+//	   System.out.println( thing.countByKey().toString() );
 	   
 	   Map<String, Object> count = thing.countByKey();
 		 
-	   //store first as x's
-	   //store second as y's
-	   //normalize y's
 	   //make pie and bar
+	   ArrayList<String> hours = new ArrayList<String>();
+	   ArrayList<Double> averageTL = new ArrayList<Double>();
 	   for(Tuple2<String,Integer> tuple : thing.reduceByKey( (num1, num2) -> num1 + num2 ).collect() ){
-			 System.out.println(tuple._1() + "," + tuple._2()/((Long) count.get(tuple._1())).doubleValue() );
+//			 System.out.println(tuple._1() + "," + tuple._2()/((Long) count.get(tuple._1())).doubleValue() );
+			 hours.add(tuple._1());
+			 averageTL.add(tuple._2()/((Long) count.get(tuple._1())).doubleValue());
 	    }
-		 
-   }*/
+	   
+	   Data tweetData = Data.newData(averageTL);
+	   BarChartPlot barChart  = Plots.newBarChartPlot(tweetData, BLUEVIOLET);
+
+	   BarChart chart2 = GCharts.newBarChart(barChart);
+	   AxisStyle axisStyle = AxisStyle.newAxisStyle(BLACK, 13, AxisTextAlignment.CENTER);
+	   AxisLabels score = AxisLabelsFactory.newAxisLabels("Average Character Length of Tweet", 50.0);
+	   score.setAxisStyle(axisStyle);
+	   AxisLabels year = AxisLabelsFactory.newAxisLabels("The Hour", 50.0);
+	   year.setAxisStyle(axisStyle);
+
+	      // Adding axis info to chart.
+	   chart2.addXAxisLabels(AxisLabelsFactory.newAxisLabels(hours));
+	   chart2.addYAxisLabels(AxisLabelsFactory.newNumericRangeAxisLabels(0, 100));
+	   chart2.addYAxisLabels(score);
+	   chart2.addXAxisLabels(year);
+
+	   chart2.setSize(800, 250);
+	   chart2.setBarWidth(10);
+	   chart2.setSpaceWithinGroupsOfBars(0);
+	   chart2.setDataStacked(false);
+       chart2.setTitle("Average Length of Late Night Tweeting", BLACK, 16);
+	   chart2.setGrid(100, 10, 3, 2);
+	   String url2 = chart2.toURLString();
+	   System.out.println(url2); 
+	   
+   }
    
    //query7
+		 
    {
-	   /*
-	   //
+	   
 	   DataFrame wordsMostTweeted = sqlContext.sql("SELECT text FROM GoodNightTweets");
-	   wordsMostTweeted.show();
+//	   wordsMostTweeted.show();
 	   
 	   
 	   ArrayList<Tuple2<String, Integer>> words = new ArrayList<Tuple2<String,Integer>>( wordsMostTweeted.javaRDD().flatMap(
@@ -487,8 +498,6 @@ public class QueriesMain {
 					   ).reduceByKey(
 							   (count1, count2) -> count1 + count2
 							   ).collect());
-	   
-	   
 	   
 	   Collections.sort(words, 
 			   new Comparator<Tuple2<String, Integer>>(){
@@ -500,23 +509,80 @@ public class QueriesMain {
 					}
 	   			}
        );
-	   
-	   for(int i = 0; i < 100; i++){
-		   System.out.println(words.get(i));
+//	   for(int i = 0; i < 100; i++){
+//		   System.out.println(words.get(i));
+//	   }
+	   List<WordFrequency> wordList = new ArrayList<>();
+	   for(int w = 0; w < 300; w++)
+	   {
+		   String word = words.get(w)._1();
+		   int frequency = words.get(w)._2();
+		   WordFrequency item = new WordFrequency(word, frequency);
+		   wordList.add(item);
 	   }
-	   	   
-
-	   */
+	   Dimension dimension = new Dimension(600,600);
+	   WordCloud wordCloud = new WordCloud(dimension, CollisionMode.PIXEL_PERFECT);
+	   ColorPalette colorPalette = new ColorPalette(new java.awt.Color(0x4055F1), new java.awt.Color(0x408DF1), new java.awt.Color(0x40AAF1), new java.awt.Color(0x40C5F1), new java.awt.Color(0x40D3F1), new java.awt.Color(0xFFFFFF));
+	   wordCloud.setColorPalette(colorPalette);
+	   wordCloud.setPadding(2);
+	   wordCloud.setBackground(new CircleBackground(300));
+	   wordCloud.setFontScalar(new SqrtFontScalar(10, 40));
+	   wordCloud.build(wordList);
+	   wordCloud.writeToFile("testWordCloud.png");
+	   System.out.println("word cloud graph created!");
+	   
    }
    
    //query8
    {
 	   
-	   //	                                      "FROM (SELECT " +
-	   DataFrame friendsStatus = sqlContext.sql("SELECT a.place.name FROM (SELECT place FROM  GoodNightTweets WHERE place IS NOT NULL)a");
-	   friendsStatus.show();
+	   DataFrame catTweeted = sqlContext.sql("SELECT text FROM GoodNightTweets WHERE UPPER(text) LIKE UPPER('%cat%')");
+	   DataFrame dogTweeted = sqlContext.sql("SELECT text FROM GoodNightTweets WHERE UPPER(text) LIKE UPPER('%dog%')");
+	   
+	   ArrayList<Tuple2<String, Integer>> words1 = new ArrayList<Tuple2<String,Integer>>( catTweeted.javaRDD().flatMap(
+			   row -> Arrays.asList(row.get(0).toString().split(" "))
+			   ).mapToPair(
+					   word -> new Tuple2<String, Integer>( word, 1)
+					   ).reduceByKey(
+							   (count1, count2) -> count1 + count2
+							   ).collect());
+	   
+	   ArrayList<Tuple2<String, Integer>> words2 = new ArrayList<Tuple2<String,Integer>>( dogTweeted.javaRDD().flatMap(
+			   row -> Arrays.asList(row.get(0).toString().split(" "))
+			   ).mapToPair(
+					   word -> new Tuple2<String, Integer>( word, 1)
+					   ).reduceByKey(
+							   (count1, count2) -> count1 + count2
+							   ).collect());
+	   
+	   
+	   List<WordFrequency> wordList1 = new ArrayList<>();
+	   List<WordFrequency> wordList2 = new ArrayList<>();
+	   
+	   for(int w = 0; w < 150; w++)
+	   {
+		   // CHANGE words1 -> arraylist of tuples containing wordset 1
+		   String word1 = words1.get(w)._1();
+		   int frequency1 = words1.get(w)._2();
+		   WordFrequency item1 = new WordFrequency(word1, frequency1);
+		   wordList1.add(item1);
+		   
+		   // CHANGE words2 -> arraylist of tuples containing wordset 2
+		   String word2 = words2.get(w)._1();
+		   int frequency2 = words2.get(w)._2();
+		   WordFrequency item2 = new WordFrequency(word2, frequency2);
+		   wordList2.add(item2);
+	   }
+   
+	   final Dimension dimension = new Dimension(600, 600);
+	   final PolarWordCloud wordCloud = new PolarWordCloud(dimension, CollisionMode.PIXEL_PERFECT, PolarBlendMode.BLUR);
+	   wordCloud.setPadding(2);
+	   wordCloud.setBackground(new CircleBackground(300));
+	   wordCloud.setFontScalar(new SqrtFontScalar(10, 40));
+	   wordCloud.build(wordList1, wordList2);
+	   wordCloud.writeToFile("wordCloud_2sets.png");
+	   System.out.println("word cloud graph with two word sets created!");
+	   
    }
-   
-   
    }
 }
