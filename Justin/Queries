@@ -53,6 +53,8 @@ import static com.googlecode.charts4j.Color.*;
 import scala.Tuple2;
 
 import java.awt.*;
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.net.URL;
 import java.net.URLConnection;
@@ -86,7 +88,7 @@ public class QueriesMain {
 		JavaSparkContext sc = new JavaSparkContext(sparkConf);
 		sc.setLogLevel("FATAL");
 		
-		//sql stuff yo
+		//sql stuff 
 		SQLContext sqlContext = new SQLContext(sc);
 		JavaRDD<String> sportQueries = sc.textFile("C:/Users/Justin Baraboo/Desktop/WT20Tweets.json");
 		JavaRDD<String> electionQueries = sc.textFile("C:/Users/Justin Baraboo/Desktop/superTuesdayTweets.json");
@@ -109,6 +111,15 @@ public class QueriesMain {
 		 DataFrame goodNightTweets = sqlContext.sql("SELECT * FROM NightTweets WHERE _corrupt_record IS NULL");
 		 goodNightTweets.registerTempTable("GoodNightTweets");
 		// System.out.println(goodNightTweets.count());
+		
+		 PrintWriter writer = null;
+		 try {
+			writer = new PrintWriter(new File("OutLinks.txt"));
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		 
 		 
 		//query 1 done
 		//the sql query
@@ -171,6 +182,9 @@ public class QueriesMain {
 	    chart.setGrid(100, 10, 3, 2);
 	    String url = chart.toURLString();
 	    System.out.println(url);
+	    writer.println("Query1");
+	    writer.println(url);
+	    
 	}
 		
 		//query 2
@@ -228,6 +242,9 @@ public class QueriesMain {
 	    chart.setGrid(100, 10, 3, 2);
 	    String url = chart.toURLString();
 	    System.out.println(url);
+	    
+	    writer.println("Query2");
+	    writer.println(url);
 	}
 	 
 	    
@@ -266,6 +283,8 @@ public class QueriesMain {
 		barChart.setBarWidth(50);
 		String barChartURL = barChart.toURLString();
 		System.out.println(barChartURL);
+		writer.println("Query3");
+	    writer.println(barChartURL);
 	}
 	
 		
@@ -316,6 +335,9 @@ public class QueriesMain {
 	    chart.setThreeD(false);
 	    String url = chart.toURLString();
 	    System.out.println(url);
+	    writer.println("Query4");
+	    writer.println(url);
+
 	}
 	
 	
@@ -401,6 +423,9 @@ public class QueriesMain {
 	      chart.setThreeD(true);
 	      String url = chart.toURLString();
 	      System.out.println(url);
+	      writer.println("Query5");
+	      writer.println(url);
+
 	      
 	      Data tData = Data.newData(outputTaco);//
 	      Data bData = Data.newData(outputBurger);
@@ -429,6 +454,8 @@ public class QueriesMain {
 		  chart2.setGrid(100, 10, 3, 2);
 		  String url2 = chart2.toURLString();
 		  System.out.println(url2);   	      
+		  writer.println(url2);
+
    }
 	
    
@@ -479,8 +506,9 @@ public class QueriesMain {
        chart2.setTitle("Average Length of Late Night Tweeting", BLACK, 16);
 	   chart2.setGrid(100, 10, 3, 2);
 	   String url2 = chart2.toURLString();
-	   System.out.println(url2); 
-	   
+	   System.out.println(url2);
+	   writer.println("Query6");
+	   writer.println(url2);
    }
    
    //query7
@@ -530,7 +558,6 @@ public class QueriesMain {
 	   wordCloud.build(wordList);
 	   wordCloud.writeToFile("testWordCloud.png");
 	   System.out.println("word cloud graph created!");
-	   
    }
    
    //query8
@@ -584,5 +611,65 @@ public class QueriesMain {
 	   System.out.println("word cloud graph with two word sets created!");
 	   
    }
+   
+   //query 9
+   {
+	   DataFrame followers = sqlContext.sql("SELECT user.screen_name, max(user.followers_count)"
+	   		+ " FROM SportTweets WHERE user.screen_name is NOT NULL"
+	   		+ " GROUP BY user.screen_name ORDER BY max(user.followers_count) DESC limit 10");
+	   
+	   //followers.show();
+	   
+	   List<String> outputHan = followers.javaRDD().map(
+			    row -> row.getString(0)
+			    ).collect();
+	   
+	   ArrayList<Double> outputCount = new ArrayList<Double>(followers.javaRDD().map(
+			    row -> new Long((long) row.get(1)).doubleValue()
+			    ).collect());
+	   
+	   //normalize
+	   double max = 0;
+	   for(int i = 0; i < outputCount.size(); i++){
+		   if(max < outputCount.get(i)){
+			   max = outputCount.get(i);
+		   }
+	   }
+	   
+	   for(int i = 0; i < outputCount.size(); i++){
+		   outputCount.add((outputCount.get(0)*100.0)/max);
+		   //System.out.println((outputCount.get(0)*100.0)/max);
+		   outputCount.remove(0);
+	   }
+	   
+	   
+	   Data tweetData = Data.newData(outputCount);
+	   BarChartPlot barChart  = Plots.newBarChartPlot(tweetData, BLUEVIOLET);
+
+	   BarChart chart2 = GCharts.newBarChart(barChart);
+	   AxisStyle axisStyle = AxisStyle.newAxisStyle(BLACK, 13, AxisTextAlignment.CENTER);
+	   AxisLabels score = AxisLabelsFactory.newAxisLabels("Followers", 50.0);
+	   score.setAxisStyle(axisStyle);
+	   AxisLabels year = AxisLabelsFactory.newAxisLabels("User", 50.0);
+	   year.setAxisStyle(axisStyle);
+
+	      // Adding axis info to chart.
+	   chart2.addXAxisLabels(AxisLabelsFactory.newAxisLabels(outputHan));
+	   chart2.addYAxisLabels(AxisLabelsFactory.newNumericRangeAxisLabels(0, max, max/10));
+	   chart2.addYAxisLabels(score);
+	   chart2.addXAxisLabels(year);
+
+	   chart2.setSize(1000, 250);
+	   chart2.setBarWidth(90);
+	   chart2.setSpaceWithinGroupsOfBars(0);
+	   chart2.setDataStacked(false);
+       chart2.setTitle("Number of Followers", BLACK, 16);
+	   chart2.setGrid(100, 10, 3, 2);
+	   String url2 = chart2.toURLString();
+	   System.out.println(url2);
+	   writer.println("Query9");
+	   writer.println(url2);
+   }
+   writer.close();
    }
 }
